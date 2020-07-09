@@ -35,7 +35,7 @@ function parseCsv() {
 
 function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
   return new Promise((resolve, reject) => {
-    // console.log('open connection');
+    console.log('open connection');
     oracledb.getConnection(
       {
         user: process.env.PAMSDEVUSER,
@@ -63,14 +63,18 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
 
         connection.execute(selectQuery, [], function (err, result) {
           if (err) { console.log('err ', err); return; }
+          
           let obj = {}
+
           for (let i = 0; i < result.metaData.length; i++) {
             obj[result.metaData[i].name] = result.rows[0][i];
           }
+
           const finalObj = Object.assign(obj, studentIdAndCourseCode);
           resolve(finalObj);
+
           connection.close(function (err) {
-            // console.log('close connection');
+            console.log('close connection');
             if (err) { console.log(err); }
           });
         })
@@ -82,12 +86,12 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
 async function doWork() {
   try {
     const result = await parseCsv();
-    // console.log(result);
+    console.log(result);
     result.forEach(async item => {
         let queryResult = await selectCourseStudyIdAndTitle(item);
         let insertString = `INSERT INTO wguaap.TBL_COS_VERSION_OVERRIDE (STUDENT_PIDM, STUDENT_LOGIN_NAME, ASSESSMENT_CODE, COURSE_ID, COURSE_TITLE, COURSE_VERSION, CREATION_DATE) VALUES ((SELECT g.gobtpac_pidm FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s
              ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${queryResult.studentId}'),(SELECT g.GOBTPAC_EXTERNAL_USER FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND
-             s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${queryResult.studentId}'), '${queryResult.courseCode}', ${queryResult.COURSE_STUDY_ID}, '${queryResult.TITLE}', 2, systimestamp)`;
+             s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${queryResult.studentId}'), '${queryResult.courseCode}', ${queryResult.COURSE_STUDY_ID}, '${queryResult.TITLE}', 2, systimestamp);`;
         console.log(insertString);
     })
   } catch(err) {
