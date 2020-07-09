@@ -1,6 +1,3 @@
-// npm install oracledb - only works locally
-// https://www.oracle.com/database/technologies/instant-client/macos-intel-x86-downloads.html#ic_osx_inst - need to download 64-bit oracle instant client basic light - directions are at foot of page for installation
-
 const oracledb = require('oracledb');
 const parse = require('csv-parse');
 const fs = require('fs');
@@ -8,7 +5,7 @@ const fs = require('fs');
 const argv = require('minimist')(process.argv.slice(2));
 const inputFile = argv.file;
 
-// https://stackoverflow.com/a/10073788
+// reference: https://stackoverflow.com/a/10073788
 function pad(n, width, z) {
   z = z || '0';
   n = n + '';
@@ -35,7 +32,7 @@ function parseCsv() {
 
 function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
   return new Promise((resolve, reject) => {
-    console.log('open connection');
+    // console.log('open connection');
     oracledb.getConnection(
       {
         user: process.env.PAMSDEVUSER,
@@ -74,7 +71,7 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
           resolve(finalObj);
 
           connection.close(function (err) {
-            console.log('close connection');
+            // console.log('close connection');
             if (err) { console.log(err); }
           });
         })
@@ -86,7 +83,7 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
 async function doWork() {
   try {
     const result = await parseCsv();
-    console.log(result);
+    // console.log(result);
     result.forEach(async item => {
         let queryResult = await selectCourseStudyIdAndTitle(item);
         let insertString = `INSERT INTO wguaap.TBL_COS_VERSION_OVERRIDE (STUDENT_PIDM, STUDENT_LOGIN_NAME, ASSESSMENT_CODE, COURSE_ID, COURSE_TITLE, COURSE_VERSION, CREATION_DATE) VALUES ((SELECT g.gobtpac_pidm FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s
