@@ -17,7 +17,7 @@ function parseCsv() {
   return new Promise((resolve, reject) => {
     let parsedResults = [];
     fs.readFile(inputFile, function (err, contents) {
-      if(err) {
+      if (err) {
         console.error(err);
         reject('Could not read file.');
       }
@@ -28,7 +28,7 @@ function parseCsv() {
 
           parsedResults.push(studentIdCourseCodeVersion);
         });
-        if(parsedResults) {
+        if (parsedResults) {
           resolve(parsedResults);
         }
         else {
@@ -39,82 +39,73 @@ function parseCsv() {
   })
 }
 
-function selectCourseStudyIdAndTitle(studentIdCourseCodeVersion) {
-  return new Promise((resolve, reject) => {
-    console.log('open connection');
 
-    oracledb.getConnection(
+
+async function queryPlease() {
+
+  let connection;
+  let csvValues = await parseCsv();
+
+  try {
+    console.log('open connection');
+    connection = await oracledb.getConnection(
       {
         user: process.env.PAMSDEVUSER,
         password: process.env.PAMSDEVPW,
         connectString: process.env.PAMSCONNECTSTRING
-      },
-      function (err, connection) {
-        if (err) { console.log('err', err); return; }
+      });
+      for(let i = 0; i < csvValues.length; i++ ) {
         let selectQuery = `select
-                                code,
-                                cv.id,
-                                c.TITLE,
-                                c.VERSION AS COS_version,
-                                COURSE_STUDY_ID
-                              from
-                                wguprograms.COURSE_VERSION cv
-                              JOIN
-                                wgucos.courses c
-                              ON c.id = cv.COURSE_STUDY_ID
-                              where
-                                code='${studentIdCourseCodeVersion.courseCode}' and
-                                review_status=5
-                                and c.VERSION='${studentIdCourseCodeVersion.version}'
-                              order by
-                                major_version`;
+                            code,
+                            cv.id,
+                            c.TITLE,
+                            c.VERSION AS COS_version,
+                            COURSE_STUDY_ID
+                          from
+                            wguprograms.COURSE_VERSION cv
+                          JOIN
+                            wgucos.courses c
+                          ON c.id = cv.COURSE_STUDY_ID
+                          where
+                            code='${csvValues[i].courseCode}' and
+                            review_status=5
+                            and c.VERSION='${csvValues[i].version}'
+                          order by
+                            major_version`;
 
         
-        connection.execute(selectQuery, [], function (err, result) {
-          if (err) { console.log('err ', err); return; }
-          
-          let obj = {}
-          if(result.rows[0]) {
-            for (let i = 0; i < result.metaData.length; i++) {
-              obj[result.metaData[i].name] = result.rows[0][i];
-            }
-          } else {
-            console.log('No Values for this query');
-            connection.close(function (err) {
-              console.log('close connection');
-              if (err) { console.log(err); }
-            });
-            return;
-          }
+      const result = await connection.execute(selectQuery);
 
-          const finalObj = Object.assign(obj, studentIdCourseCodeVersion);
-          console.log('final obj', finalObj);
-          resolve(finalObj);
-
-          connection.close(function (err) {
-            console.log('close connection');
-            if (err) { console.log(err); }
-          });
-        })
+      let obj = {}
+  
+      if (result.rows.length > 0) {
+        for (let i = 0; i < result.metaData.length; i++) {
+          obj[result.metaData[i].name] = result.rows[0][i];
+        }
+      } else {
+        console.log('No Values for this query ');
       }
-    );
-  })
+      const finalObj = Object.assign(obj, csvValues[i]);
+      if(finalObj.COURSE_STUDY_ID && finalObj.TITLE) {
+        let insertString = `INSERT INTO wguaap.TBL_COS_VERSION_OVERRIDE (STUDENT_PIDM, STUDENT_LOGIN_NAME, ASSESSMENT_CODE, COURSE_ID, COURSE_TITLE, COURSE_VERSION, CREATION_DATE) VALUES ((SELECT g.gobtpac_pidm FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s
+          ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${finalObj.studentId}'),(SELECT g.GOBTPAC_EXTERNAL_USER FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND
+          s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${finalObj.studentId}'), '${finalObj.courseCode}', ${finalObj.COURSE_STUDY_ID}, '${finalObj.TITLE}', 2, systimestamp);`;
+        console.log(insertString);
+      }      
+    }
+
+  } catch (err) {
+    console.error(err);
+  } finally {
+    if (connection) {
+      try {
+        console.log('close connection')
+        await connection.close();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }
 }
 
-async function doWork() {
-  try {
-    const result = await parseCsv();
-    console.log(result);
-    result.forEach(async item => {
-        let queryResult = await selectCourseStudyIdAndTitle(item);
-        let insertString = `INSERT INTO wguaap.TBL_COS_VERSION_OVERRIDE (STUDENT_PIDM, STUDENT_LOGIN_NAME, ASSESSMENT_CODE, COURSE_ID, COURSE_TITLE, COURSE_VERSION, CREATION_DATE) VALUES ((SELECT g.gobtpac_pidm FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s
-             ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${queryResult.studentId}'),(SELECT g.GOBTPAC_EXTERNAL_USER FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s ON s.SPRIDEN_PIDM = g.GOBTPAC_PIDM AND
-             s.SPRIDEN_CHANGE_IND IS NULL WHERE SPRIDEN_ID = '${queryResult.studentId}'), '${queryResult.courseCode}', ${queryResult.COURSE_STUDY_ID}, '${queryResult.TITLE}', 2, systimestamp);`;
-        console.log(insertString);
-    })
-  } catch(err) {
-    console.log('err : ', err);
-  }
- 
-}
-doWork();
+queryPlease();
