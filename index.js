@@ -6,7 +6,7 @@ const argv = require('minimist')(process.argv.slice(2));
 const inputFile = argv.file;
 
 // reference: https://stackoverflow.com/a/10073788
-function pad(n, width, z) {
+function padLeft(n, width, z) {
   z = z || '0';
   n = n + '';
   return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
@@ -17,27 +17,37 @@ function parseCsv() {
   return new Promise((resolve, reject) => {
     let parsedResults = [];
     fs.readFile(inputFile, function (err, contents) {
+      if(err) {
+        console.error(err);
+        reject('Could not read file.');
+      }
       parse(contents, { columns: true }, function (err, output) {
         output.forEach(item => {
-          let formattedId = pad(item.StudentID, 9)
-          let studentIdAndCourseCode = { studentId: formattedId, courseCode: item.CourseCode }
+          let formattedId = padLeft(item.StudentID, 9)
+          let studentIdCourseCodeVersion = { studentId: formattedId, courseCode: item.CourseCode, version: item['New Version (COS Version)'] }
 
-          parsedResults.push(studentIdAndCourseCode);
+          parsedResults.push(studentIdCourseCodeVersion);
         });
-        resolve(parsedResults);
+        if(parsedResults) {
+          resolve(parsedResults);
+        }
+        else {
+          reject('No parsed results.');
+        }
       })
     })
   })
 }
 
-function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
+function selectCourseStudyIdAndTitle(studentIdCourseCodeVersion) {
   return new Promise((resolve, reject) => {
-    // console.log('open connection');
+    console.log('open connection');
+
     oracledb.getConnection(
       {
         user: process.env.PAMSDEVUSER,
         password: process.env.PAMSDEVPW,
-        connectString: 'oracle.dev.wgu.edu:1521/lane2.wgu.edu'
+        connectString: process.env.PAMSCONNECTSTRING
       },
       function (err, connection) {
         if (err) { console.log('err', err); return; }
@@ -53,25 +63,36 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
                                 wgucos.courses c
                               ON c.id = cv.COURSE_STUDY_ID
                               where
-                                code='${studentIdAndCourseCode.courseCode}' and
+                                code='${studentIdCourseCodeVersion.courseCode}' and
                                 review_status=5
+                                and c.VERSION='${studentIdCourseCodeVersion.version}'
                               order by
                                 major_version`;
 
+        
         connection.execute(selectQuery, [], function (err, result) {
           if (err) { console.log('err ', err); return; }
           
           let obj = {}
-
-          for (let i = 0; i < result.metaData.length; i++) {
-            obj[result.metaData[i].name] = result.rows[0][i];
+          if(result.rows[0]) {
+            for (let i = 0; i < result.metaData.length; i++) {
+              obj[result.metaData[i].name] = result.rows[0][i];
+            }
+          } else {
+            console.log('No Values for this query');
+            connection.close(function (err) {
+              console.log('close connection');
+              if (err) { console.log(err); }
+            });
+            return;
           }
 
-          const finalObj = Object.assign(obj, studentIdAndCourseCode);
+          const finalObj = Object.assign(obj, studentIdCourseCodeVersion);
+          console.log('final obj', finalObj);
           resolve(finalObj);
 
           connection.close(function (err) {
-            // console.log('close connection');
+            console.log('close connection');
             if (err) { console.log(err); }
           });
         })
@@ -83,7 +104,7 @@ function selectCourseStudyIdAndTitle(studentIdAndCourseCode) {
 async function doWork() {
   try {
     const result = await parseCsv();
-    // console.log(result);
+    console.log(result);
     result.forEach(async item => {
         let queryResult = await selectCourseStudyIdAndTitle(item);
         let insertString = `INSERT INTO wguaap.TBL_COS_VERSION_OVERRIDE (STUDENT_PIDM, STUDENT_LOGIN_NAME, ASSESSMENT_CODE, COURSE_ID, COURSE_TITLE, COURSE_VERSION, CREATION_DATE) VALUES ((SELECT g.gobtpac_pidm FROM GENERAL.gobtpac g JOIN saturn.SPRIDEN s
