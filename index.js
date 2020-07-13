@@ -39,8 +39,6 @@ function parseCsv() {
   })
 }
 
-
-
 async function queryPlease() {
 
   let connection;

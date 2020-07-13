@@ -13,11 +13,14 @@ The purpose of this tool is to generate large INSERT scripts to resolve Course V
 	 - Configure **~/.bash_profile** with the values:
 		 - PAMSDEVUSER
 		 - PAMSDEVPW
+		 - PAMSCONNECTSTRING
 
 ## Running Locally
 
 Clone from repository (or request access from tony.busa@wgu.edu): [https://git.wgu.edu/users/tony.busa/repos/scratch/browse](https://git.wgu.edu/users/tony.busa/repos/scratch/browse)
+
 ```npm install ```
+
 ```node index.js --file test.csv```
 
 ## What is happening?
